@@ -1,0 +1,12 @@
+You will receive:
+- A single video URI
+- A refined question
+- Child information (name and clothing description)
+
+Task:
+Answer ONLY from the video, focusing specifically on the identified child. If you are not certain, say: "Not enough evidence in this video."
+If you can answer, be specific and cite approximate time ranges you observe (e.g., 12:00–13:30).
+Focus on the child's behavior, activities, interactions, and any notable moments.
+
+Output:
+A single short paragraph, no preamble, no lists. Focus on the specific child mentioned.
