@@ -7,6 +7,7 @@ from typing import Dict
 from src.state import QAState
 from src.adapters.llm_adapter import LLMAdapter
 from src.adapters.catalog_adapter import CatalogAdapter
+from src.utils.child_transcript_loader import load_child_transcripts_for_today
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,17 @@ def run(state: QAState, llm_adapter: LLMAdapter, catalog_adapter: CatalogAdapter
             state.transcript_path = json_out_path
             duration_ms = int((__import__('time').time() - start_ts) * 1000)
             logger.info(f"transcript_builder: reused cached transcript at {json_out_path} in {duration_ms}ms")
+            # Try to load child-specific transcripts if child is Ayaan
+            try:
+                child_info_str = (getattr(state, 'child_info', '') or '').lower()
+                if 'ayaan' in child_info_str:
+                    child_data = load_child_transcripts_for_today('Ayaan', date_str)
+                    if child_data:
+                        state.child_transcript_data = child_data
+                        state.transcript_prefer = True
+                        logger.info("transcript_builder: loaded child transcript data for Ayaan and set prefer=true")
+            except Exception as e:
+                logger.warning(f"transcript_builder: child transcript load skipped due to error: {e}")
             return state
 
         # Build per-video sections
@@ -111,6 +123,17 @@ def run(state: QAState, llm_adapter: LLMAdapter, catalog_adapter: CatalogAdapter
 
         duration_ms = int((__import__('time').time() - start_ts) * 1000)
         logger.info(f"transcript_builder completed in {duration_ms}ms, output: {state.transcript_path}")
+        # After building, also attempt to load child transcript for Ayaan if applicable
+        try:
+            child_info_str = (getattr(state, 'child_info', '') or '').lower()
+            if 'ayaan' in child_info_str:
+                child_data = load_child_transcripts_for_today('Ayaan', date_str)
+                if child_data:
+                    state.child_transcript_data = child_data
+                    state.transcript_prefer = True
+                    logger.info("transcript_builder: loaded child transcript data for Ayaan and set prefer=true")
+        except Exception as e:
+            logger.warning(f"transcript_builder: child transcript load skipped due to error: {e}")
         return state
 
     except Exception as e:

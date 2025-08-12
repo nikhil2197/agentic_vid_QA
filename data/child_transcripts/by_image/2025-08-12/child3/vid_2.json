@@ -1,0 +1,23 @@
+{
+  "video_id": "vid_2",
+  "observed": true,
+  "engagement_level": "high",
+  "mood": [
+    "happy",
+    "engaged"
+  ],
+  "behaviors": [
+    "participated in activities",
+    "played with peers",
+    "interacted with adults",
+    "followed instructions"
+  ],
+  "distress_events": [],
+  "evidence_times": [
+    "10:41-10:44",
+    "10:48-10:52",
+    "11:15-11:20",
+    "11:30-11:35"
+  ],
+  "short_per_video_summary": "The child actively participated in all group activities, showing high levels of engagement and positive interactions with both peers and adults. No signs of distress were observed."
+}

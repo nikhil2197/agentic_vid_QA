@@ -23,16 +23,27 @@ logger = logging.getLogger(__name__)
 async def main():
     """Main CLI runner function"""
     
-    # Check command line arguments
-    if len(sys.argv) < 2:
-        print("Usage: python -m src.cli_runner 'Your question here'")
-        print("Example: python -m src.cli_runner 'Did the teacher run any small-group activity after circle time?'")
-        sys.exit(1)
-    
-    # Get the initial question
-    user_question = " ".join(sys.argv[1:])
-    print(f"\n🤔 Question: {user_question}")
-    print("=" * 80)
+    # Demo mode support
+    demo_mode = (len(sys.argv) >= 2 and sys.argv[1] == "--demo")
+    transcripts_only = any(arg == "--transcripts-only" for arg in sys.argv[1:])
+    if demo_mode:
+        greeting = (
+            "Hi Sounak, what do you want to learn about Ayaan's day? "
+            "You can ask about what he did, whether he participated, what skills we worked on and much more."
+        )
+        print(f"\n👋 {greeting}")
+        user_question = input("Your question: ").strip()
+        if not user_question:
+            print("No question entered. Exiting.")
+            sys.exit(0)
+    else:
+        if len(sys.argv) < 2:
+            print("Usage: python -m src.cli_runner 'Your question here'")
+            print("Example: python -m src.cli_runner 'Did the teacher run any small-group activity after circle time?'")
+            sys.exit(1)
+        user_question = " ".join(sys.argv[1:])
+        print(f"\n🤔 Question: {user_question}")
+        print("=" * 80)
     
     try:
         # Initialize adapters
@@ -40,40 +51,59 @@ async def main():
         catalog_adapter = CatalogAdapter()
         
         # Run main flow (up to composer) - this will start with child identification
-        print("\n🔄 Starting analysis (will ask for child identification first)...")
-        result = await run_main_flow(
-            user_question=user_question,
-            llm_adapter=llm_adapter,
-            catalog_adapter=catalog_adapter
-        )
-        
-        # Check if we need child identification first
-        if hasattr(result, 'waiting_for_child_info') and result.waiting_for_child_info:
-            print(f"\n👶 {result.user_question}")
-            child_response = input("Your response: ").strip()
-            
-            # Update the state with child information
-            result.child_info = child_response
-            result.waiting_for_child_info = False
-            
-            # Add to conversation history
+        if demo_mode:
+            # Preselect Ayaan and proceed directly
             conversation_history = [
-                ConversationMessage(role="user", content=user_question),
-                ConversationMessage(role="assistant", content=result.user_question),
-                ConversationMessage(role="user", content=child_response)
+                ConversationMessage(role="assistant", content=greeting),
+                ConversationMessage(role="user", content=user_question)
             ]
-            
-            # Now run the actual analysis with child info
-            print("\n🔄 Running video analysis with child information...")
-            # Re-run main flow seeded with collected child info and history
+            print("\n🔄 Running analysis with child=Ayaan...")
             result = await run_main_flow(
                 user_question=user_question,
                 llm_adapter=llm_adapter,
                 catalog_adapter=catalog_adapter,
-                child_info=result.child_info,
-                original_question=result.original_question,
-                conversation_history=conversation_history
+                child_info="Ayaan",
+                original_question=user_question,
+                conversation_history=conversation_history,
+                demo_mode=True,
+                transcripts_only=transcripts_only
             )
+        else:
+            print("\n🔄 Starting analysis (will ask for child identification first)...")
+            result = await run_main_flow(
+                user_question=user_question,
+                llm_adapter=llm_adapter,
+                catalog_adapter=catalog_adapter
+            )
+            
+            # Check if we need child identification first
+            if hasattr(result, 'waiting_for_child_info') and result.waiting_for_child_info:
+                print(f"\n👶 {result.user_question}")
+                child_response = input("Your response: ").strip()
+                
+                # Update the state with child information
+                result.child_info = child_response
+                result.waiting_for_child_info = False
+                
+                # Add to conversation history
+                conversation_history = [
+                    ConversationMessage(role="user", content=user_question),
+                    ConversationMessage(role="assistant", content=result.user_question),
+                    ConversationMessage(role="user", content=child_response)
+                ]
+                
+                # Now run the actual analysis with child info
+                print("\n🔄 Running video analysis with child information...")
+                # Re-run main flow seeded with collected child info and history
+                result = await run_main_flow(
+                    user_question=user_question,
+                    llm_adapter=llm_adapter,
+                    catalog_adapter=catalog_adapter,
+                    child_info=result.child_info,
+                    original_question=result.original_question,
+                    conversation_history=conversation_history,
+                    transcripts_only=transcripts_only
+                )
         
         # Display results
         print(f"\n📹 Videos analyzed: {', '.join(result.target_videos) if result.target_videos else 'None'}")
@@ -109,16 +139,33 @@ async def main():
                 )
                 
                 # Import and run followup_advisor directly
-                from src.nodes.followup_advisor import run as followup_advisor
-                # followup_advisor is synchronous, so call it directly without await
-                followup_result = followup_advisor(followup_state, llm_adapter)
-                
-                # Display follow-up response
-                print(f"\n💡 Follow-up Response:")
-                print(f"{followup_result.followup_response}")
-                
-                # Add response to conversation history
-                conversation_history.append(ConversationMessage(role="assistant", content=followup_result.followup_response))
+                from src.nodes.followup_advisor import run as followup_advisor_node
+                followup_result = followup_advisor_node(followup_state, llm_adapter)
+
+                # Decide route
+                route = getattr(followup_result, 'followup_route', None)
+                if route in ("transcript_child", "transcript_day"):
+                    # Rerun main flow with the follow-up as a new question
+                    next_q = followup_result.conversation_history[-1].content if followup_result.conversation_history else followup
+                    print("\n🔄 Rerouting follow-up through transcripts...")
+                    result = await run_main_flow(
+                        user_question=next_q,
+                        llm_adapter=llm_adapter,
+                        catalog_adapter=catalog_adapter,
+                        child_info="Ayaan" if demo_mode else None,
+                        original_question=next_q,
+                        conversation_history=conversation_history,
+                    )
+                    # Show new final answer
+                    print(f"\n💡 Answer:")
+                    print(f"{result.final_answer}")
+                    # Update conversation history with this turn
+                    conversation_history.append(ConversationMessage(role="assistant", content=result.final_answer))
+                else:
+                    # Display follow-up response from advisor (parenting help)
+                    print(f"\n💡 Follow-up Response:")
+                    print(f"{followup_result.followup_response}")
+                    conversation_history.append(ConversationMessage(role="assistant", content=followup_result.followup_response))
     
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")

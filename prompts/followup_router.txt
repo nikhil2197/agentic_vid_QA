@@ -1,0 +1,19 @@
+System:
+Classify the user's latest follow-up question into one of three routes.
+
+Routes:
+- transcript_child: about a specific child’s day details (participation, behavior, mood, distress, evidence times), answerable from child transcripts.
+- transcript_day: about class-level activities/skills/what happened today, answerable from day transcript.
+- parenting_help: generic parenting advice or guidance not answerable from transcripts.
+
+Input:
+- Latest follow-up question: <text>
+
+Output:
+Return ONLY valid JSON:
+{"route": "transcript_child" | "transcript_day" | "parenting_help", "reason": "≤ 20 words"}
+
+Rules:
+- If the question mentions the child’s participation, mood, distress, attention, engagement, or evidence, pick transcript_child.
+- If the question asks about activities done or skills worked on (class-level), pick transcript_day.
+- Otherwise, parenting_help.

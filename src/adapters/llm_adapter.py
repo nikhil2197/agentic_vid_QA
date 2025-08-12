@@ -155,6 +155,50 @@ class LLMAdapter:
         except Exception as e:
             logger.error(f"Video call failed: {e}")
             raise
+
+    def call_video_with_image(self, prompt: str, gcs_uri: str, image_path: str, image_mime: str | None = None, timeout: int = 60) -> str:
+        """Call Gemini 2.5 Flash with multimodal input (text + local image + GCS video).
+        - Reads image bytes from image_path and attaches as an image Part.
+        - Attaches the video via GCS URI as before.
+        """
+        import mimetypes
+        try:
+            logger.info(f"Calling video+image model for URI: {self._log_safe_uri(gcs_uri)} with image: {image_path}")
+
+            # Detect image mime
+            if not image_mime:
+                mt, _ = mimetypes.guess_type(image_path)
+                image_mime = mt or "image/jpeg"
+
+            # Read image bytes
+            with open(image_path, "rb") as f:
+                img_bytes = f.read()
+
+            image_part = Part.from_data(mime_type=image_mime, data=img_bytes)
+            video_part = Part.from_uri(gcs_uri, mime_type="video/mp4")
+            model = GenerativeModel(self.model_name)
+
+            resp = model.generate_content(
+                [prompt, image_part, video_part],
+                generation_config={"temperature": 0.3},
+            )
+
+            text = getattr(resp, "text", None)
+            if not text and getattr(resp, "candidates", None):
+                try:
+                    text = resp.candidates[0].content.parts[0].text
+                except Exception:
+                    text = None
+
+            if not text or not str(text).strip():
+                raise ValueError("Empty response from Gemini video+image analysis")
+
+            logger.info("Video+image analysis completed successfully")
+            return str(text).strip()
+
+        except Exception as e:
+            logger.error(f"Video+image call failed: {e}")
+            raise
     
     def _log_safe_uri(self, gcs_uri: str) -> str:
         """Log GCS URI safely (only first 20 chars)"""

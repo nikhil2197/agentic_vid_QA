@@ -29,12 +29,22 @@ class QAState(BaseModel):
     transcript_answer: Optional[str] = Field(None, description="Answer derived from transcript if sufficient")
     used_transcript: bool = Field(default=False, description="Whether final answer came from transcript path")
     transcript_prefer: bool = Field(default=False, description="Prefer transcript path for this question (activities/skills, not child-specific)")
+    # Child-specific transcripts
+    child_transcript_data: Optional[Dict] = Field(None, description="Loaded per-child transcript data (per-video entries)")
     
     # Conversation management - using LangGraph's standard message handling
     messages: Annotated[Sequence[BaseMessage], operator.add] = Field(default_factory=list, description="LangGraph message history")
     conversation_history: List[ConversationMessage] = Field(default_factory=list, description="Running chat history with parent")
     followup_response: Optional[str] = Field(None, description="Response to a follow-up question")
     waiting_for_child_info: bool = Field(default=False, description="Whether we're waiting for child identification")
+    
+    # Demo/flags
+    transcripts_only: bool = Field(default=False, description="If true, never run analyzers; use transcripts only with canned fallback")
+    demo_mode: bool = Field(default=False, description="Demo mode: Ayaan greeting and defaults")
+    
+    # Follow-up routing
+    followup_route: Optional[str] = Field(None, description="Route decided for the last follow-up: transcript_child|transcript_day|parenting_help")
+    followup_next_question: Optional[str] = Field(None, description="If rerouting, the follow-up question to re-run through the pipeline")
     
     # Metadata
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique request identifier")

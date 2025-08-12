@@ -17,8 +17,16 @@ def run(state: QAState, llm_adapter: LLMAdapter) -> QAState:
         with open("prompts/composer.txt", "r") as f:
             prompt_template = f.read()
         
-        # Build prompt with video answers
-        video_answers_str = "\n".join([f"Video {vid}: {answer}" for vid, answer in state.per_video_answers.items()])
+        # Build prompt with evidence map (video IDs or transcript labels)
+        per_video = state.per_video_answers or {}
+        video_answers_str = "\n".join([f"{k}: {v}" for k, v in per_video.items()])
+
+        # Allow pass-through only for explicit fallback case
+        if "fallback" in per_video:
+            state.final_answer = per_video["fallback"].strip()
+            duration_ms = int((__import__('time').time() - start_time) * 1000)
+            logger.info(f"composer pass-through in {duration_ms}ms (fallback)")
+            return state
         
         prompt = f"{prompt_template}\n\nOriginal question: {state.user_question}\n\nVideo answers:\n{video_answers_str}"
         
@@ -33,7 +41,7 @@ def run(state: QAState, llm_adapter: LLMAdapter) -> QAState:
             # Fallback: concatenate video answers
             logger.warning("Empty response from composer, using fallback")
             fallback_parts = []
-            for vid, answer in state.per_video_answers.items():
+            for vid, answer in per_video.items():
                 if answer and answer != "Not enough evidence in this video.":
                     fallback_parts.append(f"From video {vid}: {answer}")
             

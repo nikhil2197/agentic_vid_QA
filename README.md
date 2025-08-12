@@ -56,6 +56,23 @@ python -m scripts.generate_transcript
 - The script prints the exact prompt used, asks for confirmation, analyzes all videos listed in `config/videos.yaml`, and writes `data/transcripts/transcript_YYYY-MM-DD.txt`.
 - Project: Uses `GOOGLE_CLOUD_PROJECT` if set; otherwise defaults to `clever-environs-458604-c8` inside the script (adjust as needed).
 
+### One-time: Generate Per-Child Transcripts (fast path)
+Create per-child transcripts for the current day (derived from the day transcript and analyzed per relevant video):
+```bash
+python -m scripts.generate_child_transcripts
+```
+- The script ensures a compact JSON day transcript exists, identifies children by outfit (fuzzy-deduplicated per day), analyzes each child only in videos they appear, and writes files under `data/child_transcripts/YYYY-MM-DD/<child-slug>.json`.
+- Uses `GOOGLE_CLOUD_PROJECT` if set; otherwise defaults to `clever-environs-458604-c8` in the script.
+
+### One-time: Generate Child Transcripts From Image (per video)
+Provide a reference image of the child and generate a minimal transcript for that child in each catalog video:
+```bash
+python -m scripts.generate_child_from_image --image /path/to/child.jpg --confirm
+```
+- Writes one JSON per video under `data/child_transcripts/by_image/YYYY-MM-DD/<image-slug>/<video_id>.json`.
+- Output fields: `participated`, `distress_present`, `distress_time`, `summary`.
+- Uses true multimodality (image bytes + GCS video) with Vertex AI.
+
 ## How It Works (Multimodal)
 - Model: Uses Gemini 2.5 Flash on Vertex AI (`gemini-2.5-flash`) for multimodal analysis.
 - Video input: Videos are provided via their GCS URIs from `config/videos.yaml`.

@@ -14,6 +14,7 @@ from src.nodes.transcript_answerer import run as transcript_answerer
 from src.nodes.transcript_router import run as transcript_router
 from src.nodes.composer import run as composer
 from src.nodes.followup_advisor import run as followup_advisor
+from src.nodes.followup_reentry import run as followup_reentry
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,7 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     workflow.add_node("video_analyzers", video_analyzers_wrapper)
     workflow.add_node("composer", composer_wrapper)
     workflow.add_node("followup_advisor", followup_advisor_wrapper)
+    workflow.add_node("followup_reentry", lambda state: followup_reentry(state))
     workflow.add_node("transcript_builder", transcript_builder_wrapper)
     workflow.add_node("transcript_answerer", transcript_answerer_wrapper)
     workflow.add_node("transcript_router", transcript_router_wrapper)
@@ -87,9 +89,8 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     
     # Conditional: if transcript can answer, go straight to composer; else go to video analyzers
     def _after_transcript(state: QAState) -> str:
-        # Prefer transcript for activities/skills overview (non child-specific)
-        if getattr(state, 'transcript_prefer', False) or getattr(state, 'transcript_can_answer', False):
-            # per_video_answers is pre-seeded by transcript_answerer
+        # Route to composer only when transcript has an answer
+        if getattr(state, 'transcript_can_answer', False):
             return "composer"
         return "video_analyzers"
     workflow.add_conditional_edges("transcript_answerer", _after_transcript)
@@ -103,7 +104,13 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
         return END
     
     workflow.add_conditional_edges("composer", should_continue)
-    workflow.add_edge("followup_advisor", END)
+    def after_followup(state: QAState) -> str:
+        route = getattr(state, 'followup_route', None)
+        if route in ("transcript_child", "transcript_day"):
+            return "followup_reentry"
+        return END
+    workflow.add_conditional_edges("followup_advisor", after_followup)
+    workflow.add_edge("followup_reentry", "child_identifier")
     
     return workflow
 
@@ -158,6 +165,8 @@ async def run_main_flow(
     child_info: str = None,
     original_question: str = None,
     conversation_history: list = None,
+    demo_mode: bool = False,
+    transcripts_only: bool = False,
 ) -> QAState:
     """Run the main flow (up to composer) without followup"""
     
@@ -176,6 +185,9 @@ async def run_main_flow(
         initial_state.original_question = original_question
     if conversation_history is not None:
         initial_state.conversation_history = conversation_history
+    # Set flags
+    initial_state.demo_mode = demo_mode
+    initial_state.transcripts_only = transcripts_only
     
     # Create graph for main flow only
     workflow = StateGraph(QAState)

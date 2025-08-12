@@ -40,9 +40,31 @@ def run(state: QAState, llm_adapter: LLMAdapter) -> QAState:
             logger.warning("Empty response from followup_advisor, using fallback")
             state.followup_response = "I'd be happy to help further! Could you please provide more specific details about what you'd like to know or what actions you'd like guidance on?"
         
+        # Classify the latest follow-up to decide routing
+        latest_followup = None
+        if state.conversation_history:
+            # pick the last user message content
+            for msg in reversed(state.conversation_history):
+                if getattr(msg, 'role', '') == 'user' and getattr(msg, 'content', ''):
+                    latest_followup = msg.content.strip()
+                    break
+        if latest_followup:
+            try:
+                with open("prompts/followup_router.txt", "r") as f:
+                    router_template = f.read()
+                router_prompt = f"{router_template}\n\nLatest follow-up question: {latest_followup}"
+                route_obj = llm_adapter.call_json(router_prompt, temperature=0.0)
+                route = str(route_obj.get('route', 'parenting_help'))
+                state.followup_route = route
+                if route in ("transcript_child", "transcript_day"):
+                    state.followup_next_question = latest_followup
+            except Exception as re:
+                logger.warning(f"followup routing failed: {re}")
+                state.followup_route = None
+
         # Log success
         duration_ms = int((__import__('time').time() - start_time) * 1000)
-        logger.info(f"followup_advisor completed in {duration_ms}ms, output_fields_set: ['followup_response']")
+        logger.info(f"followup_advisor completed in {duration_ms}ms, output_fields_set: ['followup_response','followup_route']")
         
     except Exception as e:
         logger.error(f"followup_advisor failed: {e}")
