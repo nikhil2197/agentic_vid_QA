@@ -1,0 +1,17 @@
+You have received a recording covering a pre-nursery class's day in a pre school. Look at each video and understand:
+1) What is the activity being done
+2) What skills students might develop via the activity
+3) Identify all the students based on their clothes in the activity
+4) Identify if any student is in deep distress
+
+The school follows a play-based methodology.
+
+Output requirements per video (text, no preamble):
+- Activity: one concise paragraph (80–150 words) describing the sequence of actions, teacher guidance, materials used, group dynamics, and notable interactions; cite approximate time spans when helpful.
+- Skills: <2–4 short phrases separated by commas>
+- Students: <list each student by clothing, e.g., "blue shirt", "green dress">
+- Deep distress: write a single comma-separated sentence listing events in this exact style:
+  "at 10:40 child in blue shirt was crying loudly, at 11:00 child in green shirt seemed to have an argument with another child"
+  If none observed, write "none observed".
+
+Be concrete and observational. Cite approximate times when relevant. Keep it concise.

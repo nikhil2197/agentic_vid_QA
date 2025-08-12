@@ -22,6 +22,13 @@ class QAState(BaseModel):
     per_video_answers: Optional[Dict[str, str]] = Field(None, description="Answers from each video analyzer")
     final_answer: Optional[str] = Field(None, description="Synthesized answer to user_question")
     
+    # Transcript-first path
+    transcript_path: Optional[str] = Field(None, description="Path to cached full-day transcript JSON")
+    transcript_prompt_version: Optional[str] = Field(None, description="Version for transcript prompt to manage cache")
+    transcript_can_answer: bool = Field(default=False, description="Whether transcript likely answers the refined question")
+    transcript_answer: Optional[str] = Field(None, description="Answer derived from transcript if sufficient")
+    used_transcript: bool = Field(default=False, description="Whether final answer came from transcript path")
+    
     # Conversation management - using LangGraph's standard message handling
     messages: Annotated[Sequence[BaseMessage], operator.add] = Field(default_factory=list, description="LangGraph message history")
     conversation_history: List[ConversationMessage] = Field(default_factory=list, description="Running chat history with parent")

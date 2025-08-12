@@ -18,6 +18,7 @@ Rules:
 - Be conversational and empathetic
 - Give 2-4 specific, actionable steps when possible
 - Keep your response to one paragraph
+- Limit length: at most 160 words in one paragraph; no preamble
 - Focus on practical, implementable advice
 - Maintain the context of the original question and answer
 
