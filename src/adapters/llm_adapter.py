@@ -5,7 +5,8 @@ import logging
 from typing import Optional, Dict, Any
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage
-from vertexai.generative_models import Part
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,12 @@ class LLMAdapter:
         """Setup Vertex AI with credentials"""
         if not self.project_id:
             raise ValueError("GOOGLE_CLOUD_PROJECT environment variable not set")
+        
+        # Initialize Vertex AI SDK for direct GenerativeModel usage
+        try:
+            vertexai.init(project=self.project_id, location=self.location)
+        except Exception as e:
+            logger.warning(f"vertexai.init failed or already initialized: {e}")
         
         # Initialize the Vertex AI Chat model for Gemini 2.5 Flash
         self._llm = ChatVertexAI(
@@ -83,26 +90,33 @@ class LLMAdapter:
             raise
     
     def call_video(self, prompt: str, gcs_uri: str, timeout: int = 60) -> str:
-        """Call Vertex AI Generative AI Gemini for video analysis using GCS URI"""
+        """Call Gemini 2.5 Flash with multimodal input (text + GCS video)."""
         try:
-            logger.info(f"Calling video model for URI: {gcs_uri[:20]}...")
-            
-            # Use Vertex AI for video analysis with GCS URI
-            # Create multimodal content with text and video using Part.from_uri
+            logger.info(f"Calling video model for URI: {self._log_safe_uri(gcs_uri)}")
+
+            # Build the video part from GCS and send together with the prompt
             video_part = Part.from_uri(gcs_uri, mime_type="video/mp4")
-            
-            # For LangChain, we need to use the correct format for multimodal content
-            # Try using the text directly with the video part
-            message = HumanMessage(content=prompt)
-            response = self._llm.invoke([message])
-            
-            if not response.content:
-                raise ValueError("Empty response from Vertex AI Generative AI Gemini video analysis")
-            
-            text_response = response.content
-            logger.info(f"Video analysis completed successfully")
-            return text_response.strip()
-            
+            model = GenerativeModel(self.model_name)
+
+            resp = model.generate_content(
+                [prompt, video_part],
+                generation_config={"temperature": 0.3},
+            )
+
+            text = getattr(resp, "text", None)
+            if not text and getattr(resp, "candidates", None):
+                # Fallback extraction for older SDK responses
+                try:
+                    text = resp.candidates[0].content.parts[0].text
+                except Exception:
+                    text = None
+
+            if not text or not str(text).strip():
+                raise ValueError("Empty response from Gemini video analysis")
+
+            logger.info("Video analysis completed successfully")
+            return str(text).strip()
+
         except Exception as e:
             logger.error(f"Video call failed: {e}")
             raise

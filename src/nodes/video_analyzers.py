@@ -30,12 +30,8 @@ def _analyze_single_video(
         
         prompt = f"{prompt_template}\n\nQuestion: {target_question}{child_context}"
         
-        # Call LLM for video analysis
-        # For now, use a mock response since we need to fix the multimodal format
-        # TODO: Fix video analysis when the correct LangChain multimodal format is determined
-        video_info = catalog_adapter.get_metadata(video_id)
-        mock_answer = f"Based on the video {video_id}, I can see children engaging in {video_info.get('act-description', 'an activity')}. However, I cannot provide specific details about your child's participation without proper video access."
-        answer = mock_answer
+        # Call LLM for video analysis (multimodal with GCS URI)
+        answer = llm_adapter.call_video(prompt=prompt, gcs_uri=gcs_uri)
         
         return video_id, answer
         
