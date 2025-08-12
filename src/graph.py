@@ -11,6 +11,7 @@ from src.nodes.question_refiner import run as question_refiner
 from src.nodes.video_analyzers import run as video_analyzers
 from src.nodes.transcript_builder import run as transcript_builder
 from src.nodes.transcript_answerer import run as transcript_answerer
+from src.nodes.transcript_router import run as transcript_router
 from src.nodes.composer import run as composer
 from src.nodes.followup_advisor import run as followup_advisor
 
@@ -54,6 +55,9 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     def transcript_answerer_wrapper(state: QAState) -> QAState:
         return transcript_answerer(state, llm_adapter)
     
+    def transcript_router_wrapper(state: QAState) -> QAState:
+        return transcript_router(state, llm_adapter)
+    
     # Add nodes
     workflow.add_node("child_identifier", child_identifier_wrapper)
     workflow.add_node("video_picker", video_picker_wrapper)
@@ -63,6 +67,7 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     workflow.add_node("followup_advisor", followup_advisor_wrapper)
     workflow.add_node("transcript_builder", transcript_builder_wrapper)
     workflow.add_node("transcript_answerer", transcript_answerer_wrapper)
+    workflow.add_node("transcript_router", transcript_router_wrapper)
     
     # Set entry point
     workflow.set_entry_point("child_identifier")
@@ -76,12 +81,14 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     workflow.add_conditional_edges("child_identifier", _after_child)
     workflow.add_edge("video_picker", "question_refiner")
     # Transcript-first branch after question refinement
-    workflow.add_edge("question_refiner", "transcript_builder")
+    workflow.add_edge("question_refiner", "transcript_router")
+    workflow.add_edge("transcript_router", "transcript_builder")
     workflow.add_edge("transcript_builder", "transcript_answerer")
     
     # Conditional: if transcript can answer, go straight to composer; else go to video analyzers
     def _after_transcript(state: QAState) -> str:
-        if getattr(state, 'transcript_can_answer', False):
+        # Prefer transcript for activities/skills overview (non child-specific)
+        if getattr(state, 'transcript_prefer', False) or getattr(state, 'transcript_can_answer', False):
             # per_video_answers is pre-seeded by transcript_answerer
             return "composer"
         return "video_analyzers"

@@ -28,6 +28,7 @@ class QAState(BaseModel):
     transcript_can_answer: bool = Field(default=False, description="Whether transcript likely answers the refined question")
     transcript_answer: Optional[str] = Field(None, description="Answer derived from transcript if sufficient")
     used_transcript: bool = Field(default=False, description="Whether final answer came from transcript path")
+    transcript_prefer: bool = Field(default=False, description="Prefer transcript path for this question (activities/skills, not child-specific)")
     
     # Conversation management - using LangGraph's standard message handling
     messages: Annotated[Sequence[BaseMessage], operator.add] = Field(default_factory=list, description="LangGraph message history")

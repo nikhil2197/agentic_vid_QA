@@ -46,6 +46,16 @@ python main.py --question "Did my child participate in the water activity?"
 ```
 The system will prompt for child identification if needed, then return a final answer.
 
+### One-time: Generate a Day Transcript (fast path)
+We support a transcript-first path that can answer overview questions without running per-video analyzers.
+
+Generate and cache a transcript for the current day (uses the same Vertex AI model and your catalog videos):
+```bash
+python -m scripts.generate_transcript
+```
+- The script prints the exact prompt used, asks for confirmation, analyzes all videos listed in `config/videos.yaml`, and writes `data/transcripts/transcript_YYYY-MM-DD.txt`.
+- Project: Uses `GOOGLE_CLOUD_PROJECT` if set; otherwise defaults to `clever-environs-458604-c8` inside the script (adjust as needed).
+
 ## How It Works (Multimodal)
 - Model: Uses Gemini 2.5 Flash on Vertex AI (`gemini-2.5-flash`) for multimodal analysis.
 - Video input: Videos are provided via their GCS URIs from `config/videos.yaml`.
@@ -70,13 +80,17 @@ You should see logs indicating the model is called with a GCS URI, and answers r
   - `child_identifier` (async): Collects the child’s name and clothing. Sets `waiting_for_child_info=True` if missing; otherwise passes along `child_info` and the original question.
   - `video_picker`: Chooses relevant videos from the catalog for the user’s question. Outputs `target_videos` (list of IDs).
   - `question_refiner`: Refines the user’s question per selected videos. Outputs `target_question`.
-  - `video_analyzers`: Runs multimodal Gemini analysis per video using its GCS URI. Outputs `per_video_answers` (dict: `video_id -> answer`).
+  - `transcript_router`: Classifies whether the refined question is an activities/skills overview that is not child-specific; sets `transcript_prefer`.
+  - `transcript_builder`: Loads an existing cached transcript (`data/transcripts/transcript_*.txt`) if present; otherwise can compile a compact JSON transcript from selected videos.
+  - `transcript_answerer`: Judges whether the transcript can answer the refined question and, if so, provides a concise answer; sets `transcript_can_answer` and seeds `per_video_answers={"transcript": ...}`.
+  - `video_analyzers`: Fallback multimodal Gemini per-video analysis when transcript is insufficient or not preferred.
   - `composer`: Synthesizes a single, parent-friendly answer from `per_video_answers`. Outputs `final_answer`.
   - `followup_advisor`: Handles interactive follow-up questions, using `conversation_history`.
 
 - State (`QAState`):
   - Inputs/outputs carried between nodes: `user_question`, `original_question`, `child_info`, `target_videos`, `target_question`, `per_video_answers`, `final_answer`.
   - Chat context: `messages` (LangGraph messages) and `conversation_history` (simple role/content log).
+  - Transcript fields: `transcript_path`, `transcript_prompt_version`, `transcript_can_answer`, `transcript_answer`, `used_transcript`, `transcript_prefer`.
   - Control flags: `waiting_for_child_info` to pause/branch after child identification.
 
 - Adapters:
@@ -93,7 +107,9 @@ You should see logs indicating the model is called with a GCS URI, and answers r
 - Edges and branching (simplified):
   - Entry → `child_identifier`
   - `child_identifier` → if `waiting_for_child_info` then `END` (CLI collects input) else `video_picker`
-  - `video_picker` → `question_refiner` → `video_analyzers` → `composer`
+  - `video_picker` → `question_refiner` → `transcript_router` → `transcript_builder` → `transcript_answerer` →
+    - if `transcript_prefer` OR `transcript_can_answer`: `composer`
+    - else: `video_analyzers` → `composer`
   - `composer` → if `conversation_history` present then `followup_advisor` → `END` else `END`
 
 - ASCII flow:
@@ -101,8 +117,10 @@ You should see logs indicating the model is called with a GCS URI, and answers r
 child_identifier --(needs child info)--> END
        | (has child info)
        v
-video_picker -> question_refiner -> video_analyzers -> composer --(has history?)--> followup_advisor -> END
-                                                                \--(no)------------------------------------------/
+video_picker -> question_refiner -> transcript_router -> transcript_builder -> transcript_answerer --(prefer/can)--> composer
+                                                                                                               \--(else)--> video_analyzers -> composer
+composer --(has history?)--> followup_advisor -> END
+            \--(no)-------------------------/
 ```
 
 - Multimodal step details:
@@ -110,7 +128,23 @@ video_picker -> question_refiner -> video_analyzers -> composer --(has history?)
   - We resolve the GCS URI with `CatalogAdapter.get_uri(video_id)` and call `LLMAdapter.call_video(prompt, gcs_uri)`.
   - `call_video` sends `[prompt, Part.from_uri(gcs_uri, mime_type="video/mp4")]` to `GenerativeModel('gemini-2.5-flash')` and returns the grounded response.
 
-## Extending The Flow
+## Transcript Fast Path Details
+- One-time transcript: Generate with `python -m scripts.generate_transcript`; stored at `data/transcripts/transcript_YYYY-MM-DD.txt`.
+- Router logic: `transcript_router` forces transcript usage for non–child-specific “activities overview” and “skills overview” questions (e.g., “What were the activities done?”, “What skills were worked on?” and close paraphrases). Otherwise, it falls back to the normal gate.
+- Gate logic: `transcript_answerer` reads either the text transcript or a compact JSON transcript, returns `{can_answer, confidence, answer, reason}`. If `confidence ≥ 0.6` or `transcript_prefer=true`, we skip analyzers and go straight to the composer.
+- Composer: Unchanged; now guided by prompt to keep answers ≤160 words and no longer truncated in code.
+
+## Recent Improvements
+- Removed hard 140-word truncations in `composer` and `followup_advisor`; enforced length via prompts (≤160 words, one paragraph, no preamble).
+- Added transcript-first path with caching and gating:
+  - New prompts: `prompts/transcript_full_day.txt`, `prompts/transcript_answerer.txt`, `prompts/transcript_router.txt`.
+  - New nodes: `src/nodes/transcript_builder.py`, `src/nodes/transcript_answerer.py`, `src/nodes/transcript_router.py`.
+  - One-time generator: `scripts/generate_transcript.py` writes `data/transcripts/transcript_YYYY-MM-DD.txt`.
+- Hardened JSON parsing in `LLMAdapter.call_json` to strip markdown fences and extract JSON blocks, preventing accidental fallbacks when models wrap JSON in code fences.
+
+## Notes
+- Vertex AI project: The runtime uses `GOOGLE_CLOUD_PROJECT`. The one-time generator will default to `clever-environs-458604-c8` if the env var is not set; change this in `scripts/generate_transcript.py` if needed.
+- Catalog: Ensure `config/videos.yaml` GCS URIs are accessible to the active credentials.
 - Add nodes by creating `src/nodes/<name>.py` and registering in `create_graph` with appropriate edges.
 - Modify prompts in `prompts/` to tune behavior without code changes.
 - To analyze non-MP4 videos, add a `mime_type` field in `config/videos.yaml` and adapt `LLMAdapter.call_video` accordingly.

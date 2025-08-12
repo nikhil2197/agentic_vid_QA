@@ -1,0 +1,14 @@
+System: Decide if the refined question should ALWAYS be answered from the day transcript (skipping per-video analyzers).
+
+You will receive the refined question. Determine:
+- Is it an activities-overview question (e.g., “What were the activities done?”, “What did the class do today?”, “What happened today?”) or a skills-overview question (e.g., “What skills were worked on?”, “What did they learn/practice?”)? Treat close paraphrases as matches.
+- It must NOT be child-specific (i.e., answer would be the same for all children; not about a single named/identified child and not requiring unique per-child evidence).
+
+Respond ONLY with JSON:
+{"prefer_transcript": true|false, "reason": "≤ 20 words"}
+
+Examples:
+- Q: "What were the activities done today?" -> {"prefer_transcript": true}
+- Q: "What skills were worked on?" -> {"prefer_transcript": true}
+- Q: "Was my child in blue shirt restless?" -> {"prefer_transcript": false}
+- Q: "Did Jack eat his lunch?" -> {"prefer_transcript": false}

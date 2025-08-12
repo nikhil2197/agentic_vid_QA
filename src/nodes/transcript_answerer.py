@@ -54,7 +54,8 @@ def run(state: QAState, llm_adapter: LLMAdapter) -> QAState:
         result = llm_adapter.call_json(prompt, temperature=0.0)
         can_answer_flag = bool(result.get("can_answer", False))
         confidence = float(result.get("confidence", 0.0))
-        can_answer = can_answer_flag and (confidence >= 0.6)
+        prefer = bool(getattr(state, 'transcript_prefer', False))
+        can_answer = (can_answer_flag and (confidence >= 0.6)) or prefer
         state.transcript_can_answer = can_answer
         state.transcript_answer = (result.get("answer", "") or "").strip()
 

@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import re
 
 from typing import Optional, Dict, Any
 from langchain_google_vertexai import ChatVertexAI
@@ -74,20 +75,54 @@ class LLMAdapter:
                 raise ValueError("Empty response from Vertex AI Generative AI Gemini")
             
             response_text = response.content
-            
-            # Try to parse JSON
+
+            # Try to sanitize common wrappers (markdown fences, leading text)
+            cleaned = self._extract_json_text(response_text)
             try:
-                result = json.loads(response_text.strip())
-                logger.info(f"JSON response parsed successfully")
+                result = json.loads(cleaned)
+                logger.info("JSON response parsed successfully")
                 return result
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON response: {response_text}")
+                logger.error(f"Sanitized candidate: {cleaned}")
                 logger.error(f"JSON parse error: {e}")
                 raise ValueError(f"Invalid JSON response: {e}")
                 
         except Exception as e:
             logger.error(f"JSON call failed: {e}")
             raise
+
+    def _extract_json_text(self, text: str) -> str:
+        """Extract probable JSON payload from model output.
+        - Strips markdown code fences ```json ... ``` or ``` ... ```
+        - If still not pure JSON, attempts to grab substring from first '{' to last '}'
+        - Falls back to original stripped text
+        """
+        s = text.strip()
+        # Remove markdown code fences
+        if s.startswith("```"):
+            # Remove first line fence
+            s = re.sub(r"^```[a-zA-Z0-9]*\n", "", s)
+            # Remove trailing fence
+            s = re.sub(r"\n```\s*$", "", s)
+            s = s.strip()
+        # Quick path: already looks like JSON object/array
+        if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+            return s
+        # Try to find the first JSON object or array in the text
+        obj_match = re.search(r"\{[\s\S]*\}", s)
+        arr_match = re.search(r"\[[\s\S]*\]", s)
+        candidate = None
+        if obj_match and arr_match:
+            # Pick the longer span
+            candidate = obj_match.group(0) if len(obj_match.group(0)) >= len(arr_match.group(0)) else arr_match.group(0)
+        elif obj_match:
+            candidate = obj_match.group(0)
+        elif arr_match:
+            candidate = arr_match.group(0)
+        if candidate:
+            return candidate.strip()
+        return s
     
     def call_video(self, prompt: str, gcs_uri: str, timeout: int = 60) -> str:
         """Call Gemini 2.5 Flash with multimodal input (text + GCS video)."""
