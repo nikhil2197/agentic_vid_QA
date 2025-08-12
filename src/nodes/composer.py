@@ -27,12 +27,7 @@ def run(state: QAState, llm_adapter: LLMAdapter) -> QAState:
         
         # Clean and validate response
         if response and len(response.strip()) > 0:
-            # Ensure it's one paragraph (under 140 words as per guardrails)
-            words = response.strip().split()
-            if len(words) > 140:
-                # Truncate to first 140 words
-                response = " ".join(words[:140]) + "..."
-            
+            # Rely on prompt to enforce length/format; no hard truncation here
             state.final_answer = response.strip()
         else:
             # Fallback: concatenate video answers

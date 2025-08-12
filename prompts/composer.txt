@@ -10,6 +10,7 @@ Rules:
 - If evidence is weak, default to saying that you didn't observe anything specific but you will keep an eye out in the future
 - Be concise, action oriented and warm 
 - Avoid any and all jargon
+ - Limit length: at most 160 words in one paragraph; no preamble
 
 Output:
 One clean paragraph. No JSON. No bullet points.

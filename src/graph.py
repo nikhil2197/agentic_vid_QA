@@ -9,6 +9,9 @@ from src.nodes.child_identifier import run as child_identifier
 from src.nodes.video_picker import run as video_picker
 from src.nodes.question_refiner import run as question_refiner
 from src.nodes.video_analyzers import run as video_analyzers
+from src.nodes.transcript_builder import run as transcript_builder
+from src.nodes.transcript_answerer import run as transcript_answerer
+from src.nodes.transcript_router import run as transcript_router
 from src.nodes.composer import run as composer
 from src.nodes.followup_advisor import run as followup_advisor
 
@@ -46,6 +49,15 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     def followup_advisor_wrapper(state: QAState) -> QAState:
         return followup_advisor(state, llm_adapter)
     
+    def transcript_builder_wrapper(state: QAState) -> QAState:
+        return transcript_builder(state, llm_adapter, catalog_adapter)
+    
+    def transcript_answerer_wrapper(state: QAState) -> QAState:
+        return transcript_answerer(state, llm_adapter)
+    
+    def transcript_router_wrapper(state: QAState) -> QAState:
+        return transcript_router(state, llm_adapter)
+    
     # Add nodes
     workflow.add_node("child_identifier", child_identifier_wrapper)
     workflow.add_node("video_picker", video_picker_wrapper)
@@ -53,6 +65,9 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     workflow.add_node("video_analyzers", video_analyzers_wrapper)
     workflow.add_node("composer", composer_wrapper)
     workflow.add_node("followup_advisor", followup_advisor_wrapper)
+    workflow.add_node("transcript_builder", transcript_builder_wrapper)
+    workflow.add_node("transcript_answerer", transcript_answerer_wrapper)
+    workflow.add_node("transcript_router", transcript_router_wrapper)
     
     # Set entry point
     workflow.set_entry_point("child_identifier")
@@ -65,7 +80,19 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
         return "video_picker"
     workflow.add_conditional_edges("child_identifier", _after_child)
     workflow.add_edge("video_picker", "question_refiner")
-    workflow.add_edge("question_refiner", "video_analyzers")
+    # Transcript-first branch after question refinement
+    workflow.add_edge("question_refiner", "transcript_router")
+    workflow.add_edge("transcript_router", "transcript_builder")
+    workflow.add_edge("transcript_builder", "transcript_answerer")
+    
+    # Conditional: if transcript can answer, go straight to composer; else go to video analyzers
+    def _after_transcript(state: QAState) -> str:
+        # Prefer transcript for activities/skills overview (non child-specific)
+        if getattr(state, 'transcript_prefer', False) or getattr(state, 'transcript_can_answer', False):
+            # per_video_answers is pre-seeded by transcript_answerer
+            return "composer"
+        return "video_analyzers"
+    workflow.add_conditional_edges("transcript_answerer", _after_transcript)
     workflow.add_edge("video_analyzers", "composer")
     
     # Conditional edge for followup_advisor
@@ -166,6 +193,12 @@ async def run_main_flow(
     
     def video_analyzers_wrapper(state: QAState) -> QAState:
         return video_analyzers(state, llm_adapter, catalog_adapter)
+
+    def transcript_builder_wrapper(state: QAState) -> QAState:
+        return transcript_builder(state, llm_adapter, catalog_adapter)
+
+    def transcript_answerer_wrapper(state: QAState) -> QAState:
+        return transcript_answerer(state, llm_adapter)
     
     def composer_wrapper(state: QAState) -> QAState:
         return composer(state, llm_adapter)
@@ -175,6 +208,8 @@ async def run_main_flow(
     workflow.add_node("question_refiner", question_refiner_wrapper)
     workflow.add_node("video_analyzers", video_analyzers_wrapper)
     workflow.add_node("composer", composer_wrapper)
+    workflow.add_node("transcript_builder", transcript_builder_wrapper)
+    workflow.add_node("transcript_answerer", transcript_answerer_wrapper)
     
     workflow.set_entry_point("child_identifier")
     # Conditional branch: if waiting for child info, stop; otherwise proceed
@@ -184,7 +219,14 @@ async def run_main_flow(
         return "video_picker"
     workflow.add_conditional_edges("child_identifier", _after_child_main)
     workflow.add_edge("video_picker", "question_refiner")
-    workflow.add_edge("question_refiner", "video_analyzers")
+    # Transcript-first branch after question refinement
+    workflow.add_edge("question_refiner", "transcript_builder")
+    workflow.add_edge("transcript_builder", "transcript_answerer")
+    def _after_transcript_main(state: QAState) -> str:
+        if getattr(state, 'transcript_can_answer', False):
+            return "composer"
+        return "video_analyzers"
+    workflow.add_conditional_edges("transcript_answerer", _after_transcript_main)
     workflow.add_edge("video_analyzers", "composer")
     
     # Compile and run

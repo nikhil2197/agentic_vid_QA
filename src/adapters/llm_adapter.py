@@ -1,11 +1,13 @@
 import os
 import json
 import logging
+import re
 
 from typing import Optional, Dict, Any
 from langchain_google_vertexai import ChatVertexAI
 from langchain_core.messages import HumanMessage
-from vertexai.generative_models import Part
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,12 @@ class LLMAdapter:
         """Setup Vertex AI with credentials"""
         if not self.project_id:
             raise ValueError("GOOGLE_CLOUD_PROJECT environment variable not set")
+        
+        # Initialize Vertex AI SDK for direct GenerativeModel usage
+        try:
+            vertexai.init(project=self.project_id, location=self.location)
+        except Exception as e:
+            logger.warning(f"vertexai.init failed or already initialized: {e}")
         
         # Initialize the Vertex AI Chat model for Gemini 2.5 Flash
         self._llm = ChatVertexAI(
@@ -67,42 +75,83 @@ class LLMAdapter:
                 raise ValueError("Empty response from Vertex AI Generative AI Gemini")
             
             response_text = response.content
-            
-            # Try to parse JSON
+
+            # Try to sanitize common wrappers (markdown fences, leading text)
+            cleaned = self._extract_json_text(response_text)
             try:
-                result = json.loads(response_text.strip())
-                logger.info(f"JSON response parsed successfully")
+                result = json.loads(cleaned)
+                logger.info("JSON response parsed successfully")
                 return result
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON response: {response_text}")
+                logger.error(f"Sanitized candidate: {cleaned}")
                 logger.error(f"JSON parse error: {e}")
                 raise ValueError(f"Invalid JSON response: {e}")
                 
         except Exception as e:
             logger.error(f"JSON call failed: {e}")
             raise
+
+    def _extract_json_text(self, text: str) -> str:
+        """Extract probable JSON payload from model output.
+        - Strips markdown code fences ```json ... ``` or ``` ... ```
+        - If still not pure JSON, attempts to grab substring from first '{' to last '}'
+        - Falls back to original stripped text
+        """
+        s = text.strip()
+        # Remove markdown code fences
+        if s.startswith("```"):
+            # Remove first line fence
+            s = re.sub(r"^```[a-zA-Z0-9]*\n", "", s)
+            # Remove trailing fence
+            s = re.sub(r"\n```\s*$", "", s)
+            s = s.strip()
+        # Quick path: already looks like JSON object/array
+        if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+            return s
+        # Try to find the first JSON object or array in the text
+        obj_match = re.search(r"\{[\s\S]*\}", s)
+        arr_match = re.search(r"\[[\s\S]*\]", s)
+        candidate = None
+        if obj_match and arr_match:
+            # Pick the longer span
+            candidate = obj_match.group(0) if len(obj_match.group(0)) >= len(arr_match.group(0)) else arr_match.group(0)
+        elif obj_match:
+            candidate = obj_match.group(0)
+        elif arr_match:
+            candidate = arr_match.group(0)
+        if candidate:
+            return candidate.strip()
+        return s
     
     def call_video(self, prompt: str, gcs_uri: str, timeout: int = 60) -> str:
-        """Call Vertex AI Generative AI Gemini for video analysis using GCS URI"""
+        """Call Gemini 2.5 Flash with multimodal input (text + GCS video)."""
         try:
-            logger.info(f"Calling video model for URI: {gcs_uri[:20]}...")
-            
-            # Use Vertex AI for video analysis with GCS URI
-            # Create multimodal content with text and video using Part.from_uri
+            logger.info(f"Calling video model for URI: {self._log_safe_uri(gcs_uri)}")
+
+            # Build the video part from GCS and send together with the prompt
             video_part = Part.from_uri(gcs_uri, mime_type="video/mp4")
-            
-            # For LangChain, we need to use the correct format for multimodal content
-            # Try using the text directly with the video part
-            message = HumanMessage(content=prompt)
-            response = self._llm.invoke([message])
-            
-            if not response.content:
-                raise ValueError("Empty response from Vertex AI Generative AI Gemini video analysis")
-            
-            text_response = response.content
-            logger.info(f"Video analysis completed successfully")
-            return text_response.strip()
-            
+            model = GenerativeModel(self.model_name)
+
+            resp = model.generate_content(
+                [prompt, video_part],
+                generation_config={"temperature": 0.3},
+            )
+
+            text = getattr(resp, "text", None)
+            if not text and getattr(resp, "candidates", None):
+                # Fallback extraction for older SDK responses
+                try:
+                    text = resp.candidates[0].content.parts[0].text
+                except Exception:
+                    text = None
+
+            if not text or not str(text).strip():
+                raise ValueError("Empty response from Gemini video analysis")
+
+            logger.info("Video analysis completed successfully")
+            return str(text).strip()
+
         except Exception as e:
             logger.error(f"Video call failed: {e}")
             raise
