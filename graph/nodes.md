@@ -1,4 +1,11 @@
 # Nodes & Responsibilities – Agentic Path
+## 0. child_identifier (Child ID Required)
+- **Input:** `user_question` (original question)
+- **Process:**
+  - Classify whether the user's question requires focusing on a specific child.
+  - If yes, prompt the user for the child's name and clothing description.
+- **Output:**
+  - `original_question` stored if prompting, `child_info` collected, `waiting_for_child_info` flag, updated `user_question` for prompt.
 
 ## 1. video_picker
 - **Input:** `user_question`, `videos.yaml` catalog  

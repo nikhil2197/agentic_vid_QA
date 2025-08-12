@@ -1,0 +1,22 @@
+Does the following question require focusing on a specific child for video analysis?
+
+The way to do this is by understanding if the answer a teacher would give might change based on the child. 
+
+E.g. 
+Question: What did they do in class today ? 
+Answer: No 
+Reason: Because all the children in the class would have done the same activity 
+
+Question: What did he eat today ? 
+Answer: No 
+Reason: Because the menu for all the children in the class is the same 
+
+Question: Was he restless in class ? 
+Answer: Yes 
+Reason: Because one child might be restless but the other might be calm 
+
+Question: Did he finish his meal today ? 
+Answer: Yes 
+Reason: Because some children might have finished their meal but others might not have. 
+
+ Respond in JSON with key 'requires_child' as true or false. Question: "{question}"

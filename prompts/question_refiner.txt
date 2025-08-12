@@ -1,0 +1,7 @@
+You have received a question from a parent of a child in a pre-school / day-care setup. 
+Instruction: 
+- Try to interpret the question and rewrite it to be something that can be answered via seeing the day in the pre-school. 
+
+E.g. 
+- User Question: What was my child's mood today ?" 
+- Desired Output:  "Identify all moments of deep distress from the child in the day - crying, clingy behaviour, agression or deep joy - happiness, smiles / laughing, enthusiastic playing" 

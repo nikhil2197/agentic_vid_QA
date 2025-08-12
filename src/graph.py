@@ -27,8 +27,9 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     workflow = StateGraph(QAState)
     
     # Create wrapper functions that bind the adapters
-    def child_identifier_wrapper(state: QAState) -> QAState:
-        return child_identifier(state, llm_adapter)
+    async def child_identifier_wrapper(state: QAState) -> QAState:
+        # Await the async child_identifier node
+        return await child_identifier(state, llm_adapter)
     
     def video_picker_wrapper(state: QAState) -> QAState:
         return video_picker(state, llm_adapter, catalog_adapter)
@@ -56,8 +57,13 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     # Set entry point
     workflow.set_entry_point("child_identifier")
     
-    # Add edges (sequential flow)
-    workflow.add_edge("child_identifier", "video_picker")
+    # Add edges (sequential flow) with conditional branch after child identification
+    def _after_child(state: QAState) -> str:
+        """If still waiting for child info, end; otherwise proceed to video_picker"""
+        if getattr(state, 'waiting_for_child_info', False):
+            return END
+        return "video_picker"
+    workflow.add_conditional_edges("child_identifier", _after_child)
     workflow.add_edge("video_picker", "question_refiner")
     workflow.add_edge("question_refiner", "video_analyzers")
     workflow.add_edge("video_analyzers", "composer")
@@ -121,7 +127,10 @@ async def run_graph(
 async def run_main_flow(
     user_question: str,
     llm_adapter: LLMAdapter = None,
-    catalog_adapter: CatalogAdapter = None
+    catalog_adapter: CatalogAdapter = None,
+    child_info: str = None,
+    original_question: str = None,
+    conversation_history: list = None,
 ) -> QAState:
     """Run the main flow (up to composer) without followup"""
     
@@ -131,15 +140,23 @@ async def run_main_flow(
     if catalog_adapter is None:
         catalog_adapter = CatalogAdapter()
     
-    # Create initial state
+    # Create initial state with optional pre-set fields
     initial_state = QAState(user_question=user_question)
+    # Seed child information and original question if provided
+    if child_info is not None:
+        initial_state.child_info = child_info
+    if original_question is not None:
+        initial_state.original_question = original_question
+    if conversation_history is not None:
+        initial_state.conversation_history = conversation_history
     
     # Create graph for main flow only
     workflow = StateGraph(QAState)
     
     # Create wrapper functions that bind the adapters
-    def child_identifier_wrapper(state: QAState) -> QAState:
-        return child_identifier(state, llm_adapter)
+    async def child_identifier_wrapper(state: QAState) -> QAState:
+        # Await the async child_identifier node
+        return await child_identifier(state, llm_adapter)
     
     def video_picker_wrapper(state: QAState) -> QAState:
         return video_picker(state, llm_adapter, catalog_adapter)
@@ -160,7 +177,12 @@ async def run_main_flow(
     workflow.add_node("composer", composer_wrapper)
     
     workflow.set_entry_point("child_identifier")
-    workflow.add_edge("child_identifier", "video_picker")
+    # Conditional branch: if waiting for child info, stop; otherwise proceed
+    def _after_child_main(state: QAState) -> str:
+        if getattr(state, 'waiting_for_child_info', False):
+            return END
+        return "video_picker"
+    workflow.add_conditional_edges("child_identifier", _after_child_main)
     workflow.add_edge("video_picker", "question_refiner")
     workflow.add_edge("question_refiner", "video_analyzers")
     workflow.add_edge("video_analyzers", "composer")

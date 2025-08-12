@@ -65,10 +65,14 @@ async def main():
             
             # Now run the actual analysis with child info
             print("\n🔄 Running video analysis with child information...")
+            # Re-run main flow seeded with collected child info and history
             result = await run_main_flow(
                 user_question=user_question,
                 llm_adapter=llm_adapter,
-                catalog_adapter=catalog_adapter
+                catalog_adapter=catalog_adapter,
+                child_info=result.child_info,
+                original_question=result.original_question,
+                conversation_history=conversation_history
             )
         
         # Display results

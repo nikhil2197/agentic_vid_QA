@@ -4,7 +4,7 @@ from src.adapters.llm_adapter import LLMAdapter
 
 logger = logging.getLogger(__name__)
 
-def run(state: QAState, llm_adapter: LLMAdapter) -> QAState:
+async def run(state: QAState, llm_adapter: LLMAdapter) -> QAState:
     """
     Node: child_identifier
     Input: user_question (original question)
@@ -13,38 +13,45 @@ def run(state: QAState, llm_adapter: LLMAdapter) -> QAState:
     start_time = __import__('time').time()
     
     try:
-        # Check if this is the first interaction (no child_info yet)
-        if not hasattr(state, 'child_info') or not state.child_info:
-            # This is the initial question - ask for child identification
-            child_question = "Can you tell me your child's name and describe what they were wearing today?"
-            
-            # Store the original question for later
-            state.original_question = state.user_question
-            
-            # Set the current question to the child identification prompt
-            state.user_question = child_question
-            
-            # Add to conversation history
-            from src.state import ConversationMessage
-            if not hasattr(state, 'conversation_history'):
-                state.conversation_history = []
-            state.conversation_history.append(ConversationMessage(role="assistant", content=child_question))
-            
-            # Set a flag to indicate we're waiting for child info
-            state.waiting_for_child_info = True
-            
-            # Log the child identification request
-            duration_ms = int((__import__('time').time() - start_time) * 1000)
-            logger.info(f"child_identifier completed in {duration_ms}ms, output_fields_set: ['user_question', 'waiting_for_child_info'], requesting child identification")
-            
-        else:
-            # Child info already provided, proceed with original question
+        # If child info has already been provided, restore and proceed
+        if getattr(state, 'child_info', None):
             state.waiting_for_child_info = False
-            
-            # Log that we're proceeding with the original question
+            if state.original_question:
+                state.user_question = state.original_question
             duration_ms = int((__import__('time').time() - start_time) * 1000)
-            logger.info(f"child_identifier completed in {duration_ms}ms, child info already available, proceeding with original question")
-        
+            logger.info(f"child_identifier completed in {duration_ms}ms, child info available, proceeding with original question")
+        else:
+            # Determine if child identification is needed via LLM classification
+            requires_child = True
+            try:
+                # Load classification prompt template
+                with open("prompts/child_identifier_classify.txt", "r") as f:
+                    classify_template = f.read()
+                classification_prompt = classify_template.format(question=state.user_question)
+                classification = llm_adapter.call_json(classification_prompt)
+                requires_child = bool(classification.get("requires_child", True))
+            except Exception as cls_e:
+                logger.warning(f"child_identifier classification failed: {cls_e}, defaulting to requiring child info")
+                requires_child = True
+
+            if requires_child:
+                # Prompt user for child identification using template
+                with open("prompts/child_identifier.txt", "r") as f:
+                    child_question = f.read().strip()
+                state.original_question = state.user_question
+                state.user_question = child_question
+                from src.state import ConversationMessage
+                if not getattr(state, 'conversation_history', None):
+                    state.conversation_history = []
+                state.conversation_history.append(ConversationMessage(role="assistant", content=child_question))
+                state.waiting_for_child_info = True
+                duration_ms = int((__import__('time').time() - start_time) * 1000)
+                logger.info(f"child_identifier completed in {duration_ms}ms, requesting child identification")
+            else:
+                # No child identification needed, proceed
+                state.waiting_for_child_info = False
+                duration_ms = int((__import__('time').time() - start_time) * 1000)
+                logger.info(f"child_identifier completed in {duration_ms}ms, child identification not required, proceeding")
     except Exception as e:
         logger.error(f"child_identifier failed: {e}")
         # Fallback: proceed without child identification
