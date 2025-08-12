@@ -5,6 +5,9 @@ Test script for Vertex AI integration
 
 import os
 import asyncio
+import sys
+# Add project root to path so 'src' can be imported
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.adapters.llm_adapter import LLMAdapter
 
 async def test_vertex_ai():

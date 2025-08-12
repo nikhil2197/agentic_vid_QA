@@ -3,6 +3,10 @@
 Test script to verify CLI runner fix for state field access
 """
 
+import os
+import sys
+# Add project root to path so 'src' can be imported
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.state import QAState
 
 def test_state_field_access():

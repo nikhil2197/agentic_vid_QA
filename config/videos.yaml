@@ -1,35 +1,45 @@
+###############################################
+# Video Catalog Configuration
+#
+# Define your own list of videos here. Each entry should include:
+#  - id: unique video identifier
+#  - gcs_uri: GCS path or HTTPS URL to the video
+#  - session-type: e.g., Circle, Activity, Meal
+#  - start-time / end-time: numeric (minutes) or time string HH:MM
+#  - act-description: brief description of the activity
+###############################################
 videos:
   - id: vid_1
     gcs_uri: gs://openvision_labelling_service/Circle.mp4
     session-type: "Circle"
     start-time: 10:00
     end-time: 10:25
-    act-description: "Morning circle time with rhymes and songs to settle in for the day with friends."
+    act-description: "Circle Time."
 
   - id: vid_2
     gcs_uri: gs://openvision_labelling_service/Movement.mp4
     session-type: "Activity"
     start-time: 10;50
     end-time: 11:20
-    act-description: "Children play hopscotch and floor is lava while learning how to count and improve balance"
+    act-description: "Movement Activity"
 
   - id: vid_3
     gcs_uri: gs://openvision_labelling_service/Plant.mp4
     session-type: "Activity"
     start-time: 11:20
     end-time: 11:50
-    act-description: "Children learn the importance of water to plants and engage in watering them"
+    act-description: "Waterplay activity"
 
   - id: vid_4
     gcs_uri: gs://openvision_labelling_service/Table.mp4
     session-type: "Activity"
     start-time: 11:20
     end-time: 11:50
-    act-description: "Children engage in a sensory table activity with mud, seeds and plants to learn how to plant a seed in a paper cup"
+    act-description: "Sensory Table Activity"
 
   - id: vid_5
     gcs_uri: gs://openvision_labelling_service/Meal.mp4
     session-type: "Meal"
     start-time: 10:25
     end-time: 10:50
-    act-description: "Fruit break after circle time with children eating apples"
+    act-description: "Snack Break"

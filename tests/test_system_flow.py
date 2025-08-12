@@ -7,8 +7,8 @@ import asyncio
 import sys
 import os
 
-# Add src to path
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+# Add project root to path so 'src' can be imported
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.state import QAState, ConversationMessage
 from src.adapters.catalog_adapter import CatalogAdapter
