@@ -46,7 +46,8 @@ def slugify_filename(path: Path) -> str:
 
 
 def load_prompt() -> str:
-    with open("prompts/child_image_analyzer.txt", "r", encoding="utf-8") as f:
+    """Load the unified child mood analyzer prompt used for image-guided transcripts."""
+    with open("prompts/child_mood_analyzer.txt", "r", encoding="utf-8") as f:
         return f.read().strip()
 
 
@@ -111,14 +112,29 @@ def main():
             payload = json.loads(text)
             if not isinstance(payload, dict):
                 raise ValueError("Response is not a JSON object")
+            # Ensure the expected fields from child_mood_analyzer are present
+            payload.setdefault("video_id", vid)
+            payload.setdefault("child_label", "")
+            payload.setdefault("observed", False)
+            payload.setdefault("engagement_level", "unknown")
+            payload.setdefault("mood", [])
+            payload.setdefault("behaviors", [])
+            payload.setdefault("distress_events", [])
+            payload.setdefault("evidence_times", [])
+            payload.setdefault("short_per_video_summary", "")
         except Exception as e:
             logger.warning(f"Non-JSON or error for {vid}: {e}")
+            # Fallback to a valid schema matching child_mood_analyzer
             payload = {
                 "video_id": vid,
-                "participated": False,
-                "distress_present": False,
-                "distress_time": "",
-                "summary": "Child not confidently observed."
+                "child_label": "",
+                "observed": False,
+                "engagement_level": "unknown",
+                "mood": [],
+                "behaviors": [],
+                "distress_events": [],
+                "evidence_times": [],
+                "short_per_video_summary": "Child not confidently observed."
             }
 
         out_path = out_dir / f"{vid}.json"
@@ -136,4 +152,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -20,5 +20,17 @@ env/
 # MacOS files
 .DS_Store
 
-# Data
-data/
+# Data: ignore all by default, but keep transcripts and child transcripts
+data/*
+!data/.gitkeep
+!data/transcripts/
+!data/transcripts/**
+!data/child_transcripts/
+!data/child_transcripts/**
+
+# Explicitly ignore any video or clip media
+data/**/*.mp4
+data/**/*.mov
+data/**/*_clip*.mp4
+data/snippedvideos/
+data/snippedvideos/**

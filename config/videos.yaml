@@ -19,7 +19,7 @@ videos:
   - id: vid_2
     gcs_uri: gs://openvision_labelling_service/Movement.mp4
     session-type: "Activity"
-    start-time: 10;50
+    start-time: 10:50
     end-time: 11:20
     act-description: "Hopscotch and Floor is Lava while learning how to count and improve balance"
 

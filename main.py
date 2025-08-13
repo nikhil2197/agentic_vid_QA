@@ -19,9 +19,8 @@ def main():
     args = parser.parse_args()
     # Prepare arguments for CLI runner
     if args.demo:
-        argv = ["cli_runner", "--demo"]
-        if args.transcripts_only:
-            argv.append("--transcripts-only")
+        # In demo mode we always force transcripts-only
+        argv = ["cli_runner", "--demo", "--transcripts-only"]
         sys.argv = argv
     else:
         if not args.question:

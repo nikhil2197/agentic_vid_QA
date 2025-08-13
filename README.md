@@ -1,15 +1,19 @@
-# Agentic Video QA System
+# Agentic Video QA System (Transcript-First Demo)
 
-A streamlined AI pipeline for analyzing preschool video recordings. Ask a question, optionally identify your child, and receive a concise, parent-friendly answer.
+A streamlined, transcript-first demo for preschool video QA. Ask a question, identify the child (Ayaan in demo), and get a concise answer sourced from pre-generated transcripts. The demo does not invoke multimodal video analyzers.
 
 ## Project Structure
 ```
-config/               # Video metadata (videos.yaml)
-prompts/              # Prompt templates (*.txt)
-src/                  # Core source code (graph, nodes, adapters, CLI)
-tests/                # Unit tests for nodes and flow
-README.md             # Project overview and instructions
-requirements.txt      # Dependency specifications
+config/                 # Video metadata (videos.yaml)
+prompts/                # Prompt templates used by the demo
+src/                    # Core source (graph, nodes, adapters, CLI)
+scripts/                # Utility scripts (prep, child transcripts from image)
+data/transcripts/       # Day transcripts (committed)
+data/child_transcripts/ # Per-child transcripts (committed)
+data/snippedvideos/     # Local evidence clips (ignored)
+tests/                  # Unit tests
+README.md               # This guide
+requirements.txt        # Python deps
 ```
 
 ## Setup
@@ -26,108 +30,97 @@ requirements.txt      # Dependency specifications
    ```bash
    export GOOGLE_CLOUD_PROJECT="<your-project-id>"
    ```
-4. Authenticate to Google Cloud (for Vertex AI + GCS access):
+4. Authenticate to Google Cloud (only needed for transcript generation prep; not required to run the demo):
    ```bash
    gcloud auth application-default login
    ```
    - Ensure the active credentials have access to the GCS bucket objects (at least `roles/storage.objectViewer`).
    - Enable the Vertex AI and Cloud Storage APIs for your project.
 
-5. Configure video catalog in `config/videos.yaml`:
+5. Configure video catalog in `config/videos.yaml` (for prep only, not required to run the demo):
    - Open the file, remove or update the sample entries, and add your own video metadata.
    - Each entry must include a `gcs_uri` (for example `gs://bucket/path/video.mp4`).
    - Optional fields like `session-type`, `start-time`, and `end-time` can be either numeric minutes or `HH:MM` strings.
 
 ## Usage
-### CLI Mode
-Ask a question via the command line:
+### Demo Run (Transcript-Only)
+- Parent: Sounak; Child: Ayaan.
+- The demo uses transcripts only and never calls multimodal video analyzers.
+
+Run the interactive demo:
 ```bash
-python main.py --question "Did my child participate in the water activity?"
+python main.py --demo
 ```
-The system will prompt for child identification if needed, then return a final answer.
+- You’ll be prompted for a question. The system answers using the day transcript and child transcript (if available) for Ayaan.
+- Follow-up routing remains: generate evidence clip, retrigger transcript analysis, or start parent advisor.
 
-### One-time: Generate a Day Transcript (fast path)
-We support a transcript-first path that can answer overview questions without running per-video analyzers.
-
-Generate and cache a transcript for the current day (uses the same Vertex AI model and your catalog videos):
+Non-interactive mode (without demo banner, still transcript-first):
 ```bash
-python -m scripts.generate_transcript
+python main.py --question "What activities did Ayaan do today?" --transcripts-only
 ```
-- The script prints the exact prompt used, asks for confirmation, analyzes all videos listed in `config/videos.yaml`, and writes `data/transcripts/transcript_YYYY-MM-DD.txt`.
-- Project: Uses `GOOGLE_CLOUD_PROJECT` if set; otherwise defaults to `clever-environs-458604-c8` inside the script (adjust as needed).
 
-### One-time: Generate Per-Child Transcripts (fast path)
-Create per-child transcripts for the current day (derived from the day transcript and analyzed per relevant video):
+### Prepare Child Transcript From Image (Optional Prep)
+Use only when you locally have the child’s image and access to the GCS videos. This generates per-video child transcripts guided by a local image using the unified `child_mood_analyzer` prompt.
 ```bash
-python -m scripts.generate_child_transcripts
+python -m scripts.generate_child_from_image --image /path/to/ayaan.jpg --confirm
 ```
-- The script ensures a compact JSON day transcript exists, identifies children by outfit (fuzzy-deduplicated per day), analyzes each child only in videos they appear, and writes files under `data/child_transcripts/YYYY-MM-DD/<child-slug>.json`.
-- Uses `GOOGLE_CLOUD_PROJECT` if set; otherwise defaults to `clever-environs-458604-c8` in the script.
+- Output: `data/child_transcripts/by_image/YYYY-MM-DD/<image-slug>/<video_id>.json`
+- Schema: `{ video_id, child_label, observed, engagement_level, mood[], behaviors[], distress_events[], evidence_times[], short_per_video_summary }`.
 
-### One-time: Generate Child Transcripts From Image (per video)
-Provide a reference image of the child and generate a minimal transcript for that child in each catalog video:
-```bash
-python -m scripts.generate_child_from_image --image /path/to/child.jpg --confirm
-```
-- Writes one JSON per video under `data/child_transcripts/by_image/YYYY-MM-DD/<image-slug>/<video_id>.json`.
-- Output fields: `participated`, `distress_present`, `distress_time`, `summary`.
-- Uses true multimodality (image bytes + GCS video) with Vertex AI.
-
-## How It Works (Multimodal)
-- Model: Uses Gemini 2.5 Flash on Vertex AI (`gemini-2.5-flash`) for multimodal analysis.
-- Video input: Videos are provided via their GCS URIs from `config/videos.yaml`.
-- Invocation: The analyzer sends both the natural-language prompt and a GCS video reference to Gemini using `vertexai.generative_models.GenerativeModel` and `Part.from_uri(...)`.
-- Grounding: The analyzer prompt enforces “answer only from the video” and returns “Not enough evidence in this video.” when uncertain.
-
-Environment defaults:
-- `GOOGLE_CLOUD_PROJECT` must be set.
-- Region defaults to `us-central1` (configurable in `src/adapters/llm_adapter.py`).
-- Ensure your credentials can read the referenced GCS objects.
-
-Quick validation:
-```bash
-python main.py --question "Did the teacher run any small-group activity after circle time?"
-```
-You should see logs indicating the model is called with a GCS URI, and answers referencing observable events in the video.
+Note: Do not commit any videos. The transcripts under `data/transcripts/` and `data/child_transcripts/` are committed; videos and clips are ignored by git. A Google Drive link to input videos will be shared separately in Slack for internal prep only.
 
 ## Architecture
-- LangGraph workflow orchestrates the end-to-end QA pipeline. The graph and nodes live in `src/graph.py` and `src/nodes/` respectively; state is `src/state.py`.
+- Graph and nodes: `src/graph.py`, `src/nodes/`; state: `src/state.py`.
 
-- Nodes (in order of flow):
-  - `child_identifier` (async): Collects the child’s name and clothing. Sets `waiting_for_child_info=True` if missing; otherwise passes along `child_info` and the original question.
-  - `video_picker`: Chooses relevant videos from the catalog for the user’s question. Outputs `target_videos` (list of IDs).
-  - `question_refiner`: Refines the user’s question per selected videos. Outputs `target_question`.
-  - `transcript_router`: Classifies whether the refined question is an activities/skills overview that is not child-specific; sets `transcript_prefer`.
-  - `transcript_builder`: Loads an existing cached transcript (`data/transcripts/transcript_*.txt`) if present; otherwise can compile a compact JSON transcript from selected videos.
-  - `transcript_answerer`: Judges whether the transcript can answer the refined question and, if so, provides a concise answer; sets `transcript_can_answer` and seeds `per_video_answers={"transcript": ...}`.
-  - `video_analyzers`: Fallback multimodal Gemini per-video analysis when transcript is insufficient or not preferred.
-  - `composer`: Synthesizes a single, parent-friendly answer from `per_video_answers`. Outputs `final_answer`.
-  - `followup_advisor`: Handles interactive follow-up questions, using `conversation_history`.
+- Demo node order (transcript-only path):
+  - `child_identifier` → `video_picker` → `question_refiner` → `transcript_builder` → `transcript_answerer` → `composer` → optional `followup_advisor`
 
-- State (`QAState`):
-  - Inputs/outputs carried between nodes: `user_question`, `original_question`, `child_info`, `target_videos`, `target_question`, `per_video_answers`, `final_answer`.
-  - Chat context: `messages` (LangGraph messages) and `conversation_history` (simple role/content log).
-  - Transcript fields: `transcript_path`, `transcript_prompt_version`, `transcript_can_answer`, `transcript_answer`, `used_transcript`, `transcript_prefer`.
-  - Control flags: `waiting_for_child_info` to pause/branch after child identification.
+ASCII demo flow:
+```
+child_identifier --(needs child info)--> END
+       | (has child info)
+       v
+video_picker -> question_refiner -> transcript_builder -> transcript_answerer --(can)--> composer
+                                                                                 \--(else; transcripts-only)--> composer (polite fallback)
+composer --(has history?)--> followup_advisor -> END
+            \--(no)-------------------------/
+```
 
-- Adapters:
-  - `LLMAdapter` (`src/adapters/llm_adapter.py`):
-    - Text (`call_text`) and JSON (`call_json`) via LangChain `ChatVertexAI`.
-    - Video (`call_video`) via Vertex SDK `GenerativeModel` with `[prompt, Part.from_uri(gs://...)]` for true multimodality.
-  - `CatalogAdapter` (`src/adapters/catalog_adapter.py`): Loads `config/videos.yaml` and resolves `video_id -> gcs_uri` and metadata.
+- Fallback semantics in demo: If the transcript cannot answer, we do not call video analyzers; we synthesize a polite fallback and continue into composer. Follow-ups can still ask to generate evidence clips locally or re-route through transcript analysis.
 
-## Execution Pathway
-- Entry points:
-  - CLI: `python main.py --question "..."` → `src/cli_runner.py` → `run_main_flow(...)` in `src/graph.py`.
-  - Graph creation: `create_graph(...)` wires nodes and conditional edges using `StateGraph(QAState)`.
-
-- Edges and branching (simplified):
-  - Entry → `child_identifier`
-  - `child_identifier` → if `waiting_for_child_info` then `END` (CLI collects input) else `video_picker`
-  - `video_picker` → `question_refiner` → `transcript_router` → `transcript_builder` → `transcript_answerer` →
-    - if `transcript_prefer` OR `transcript_can_answer`: `composer`
+### Full Graph (Reference)
+- The full graph includes transcript routing and video analyzers for fallback beyond the demo scope.
+- Node order (simplified):
+  - `child_identifier` → `video_picker` → `question_refiner` → `transcript_router` → `transcript_builder` → `transcript_answerer` →
+    - if transcript can answer: `composer`
     - else: `video_analyzers` → `composer`
-  - `composer` → if `conversation_history` present then `followup_advisor` → `END` else `END`
+  - `composer` → optional `followup_advisor`
+
+ASCII full flow:
+```
+child_identifier --(needs child info)--> END
+       | (has child info)
+       v
+video_picker -> question_refiner -> transcript_router -> transcript_builder -> transcript_answerer --(prefer/can)--> composer
+                                                                                                   \--(else)--> video_analyzers -> composer
+composer --(has history?)--> followup_advisor -> END
+            \--(no)-------------------------/
+```
+
+- Note: The demo uses only the transcript-first path and does not invoke `video_analyzers`. Some prompts supporting the full graph are archived for now; see Archived Prompts below.
+
+## Clean Run Path
+- Demo interactive:
+  - `python main.py --demo`
+  - Answer is produced using `data/transcripts/**` and any available `data/child_transcripts/**`.
+
+- Non-interactive (transcripts-only):
+  - `python main.py --question "..." --transcripts-only`
+
+- Optional prep (internal only):
+  - Generate day transcript text/JSON (offline, requires GCS/Vertex). Do not run for demo; instead use provided committed transcripts. A Google Drive link to inputs will be shared in Slack.
+  - Generate child transcripts from image:
+    - `python -m scripts.generate_child_from_image --image /path/to/ayaan.jpg --confirm`
 
 - ASCII flow:
 ```
@@ -145,19 +138,26 @@ composer --(has history?)--> followup_advisor -> END
   - We resolve the GCS URI with `CatalogAdapter.get_uri(video_id)` and call `LLMAdapter.call_video(prompt, gcs_uri)`.
   - `call_video` sends `[prompt, Part.from_uri(gcs_uri, mime_type="video/mp4")]` to `GenerativeModel('gemini-2.5-flash')` and returns the grounded response.
 
-## Transcript Fast Path Details
-- One-time transcript: Generate with `python -m scripts.generate_transcript`; stored at `data/transcripts/transcript_YYYY-MM-DD.txt`.
-- Router logic: `transcript_router` forces transcript usage for non–child-specific “activities overview” and “skills overview” questions (e.g., “What were the activities done?”, “What skills were worked on?” and close paraphrases). Otherwise, it falls back to the normal gate.
-- Gate logic: `transcript_answerer` reads either the text transcript or a compact JSON transcript, returns `{can_answer, confidence, answer, reason}`. If `confidence ≥ 0.6` or `transcript_prefer=true`, we skip analyzers and go straight to the composer.
-- Composer: Unchanged; now guided by prompt to keep answers ≤160 words and no longer truncated in code.
+## Notes and Hygiene
+- No videos in git. `.gitignore` excludes videos and clips under `data/` but includes transcripts and child transcripts.
+- Transcripts are committed under `data/transcripts/**` and `data/child_transcripts/**`.
+- Prep scripts are optional and for internal use only.
+- The demo flow targets the parent Sounak and child Ayaan.
 
-## Recent Improvements
-- Removed hard 140-word truncations in `composer` and `followup_advisor`; enforced length via prompts (≤160 words, one paragraph, no preamble).
-- Added transcript-first path with caching and gating:
-  - New prompts: `prompts/transcript_full_day.txt`, `prompts/transcript_answerer.txt`, `prompts/transcript_router.txt`.
-  - New nodes: `src/nodes/transcript_builder.py`, `src/nodes/transcript_answerer.py`, `src/nodes/transcript_router.py`.
-  - One-time generator: `scripts/generate_transcript.py` writes `data/transcripts/transcript_YYYY-MM-DD.txt`.
-- Hardened JSON parsing in `LLMAdapter.call_json` to strip markdown fences and extract JSON blocks, preventing accidental fallbacks when models wrap JSON in code fences.
+## Archived Prompts
+- Purpose: These capture alternative paths and variations we explored to get things running. They are not used by the transcript-only demo but remain as reference.
+- Location: `prompts_archive/`
+- Includes:
+  - `child_image_analyzer.txt` and `child_simple_analyzer.txt` (older child-per-video variants)
+  - `parent_coach.txt` (earlier parenting helper wording)
+  - `transcript_one_time.txt` (text-first transcript variant)
+  - `transcript_router.txt` (router used by the full-graph reference above)
+
+## Follow-ups
+- After the first answer, the CLI offers:
+  - Generate evidence clip(s) locally
+  - Retrigger transcript analysis route
+  - Start parent advisor
 
 ## Notes
 - Vertex AI project: The runtime uses `GOOGLE_CLOUD_PROJECT`. The one-time generator will default to `clever-environs-458604-c8` if the env var is not set; change this in `scripts/generate_transcript.py` if needed.

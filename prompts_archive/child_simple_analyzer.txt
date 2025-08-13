@@ -28,3 +28,4 @@ Rules:
 - Be concrete and observational. No speculation.
 - Keep text compact. No markdown or prose outside JSON.
 
+

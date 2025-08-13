@@ -27,6 +27,8 @@ async def main():
     demo_mode = (len(sys.argv) >= 2 and sys.argv[1] == "--demo")
     transcripts_only = any(arg == "--transcripts-only" for arg in sys.argv[1:])
     if demo_mode:
+        # Force transcripts-only in demo for a non-multimodal path
+        transcripts_only = True
         greeting = (
             "Hi Sounak, what do you want to learn about Ayaan's day? "
             "You can ask about what he did, whether he participated, what skills we worked on and much more."
