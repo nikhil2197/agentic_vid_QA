@@ -45,6 +45,9 @@ class QAState(BaseModel):
     # Follow-up routing
     followup_route: Optional[str] = Field(None, description="Route decided for the last follow-up: transcript_child|transcript_day|parenting_help")
     followup_next_question: Optional[str] = Field(None, description="If rerouting, the follow-up question to re-run through the pipeline")
+    # Evidence clips (snipped video)
+    evidence_clips: Optional[Dict[str, List[str]]] = Field(default=None, description="Map of video_id to list of snipped clip paths")
+    evidence_message: Optional[str] = Field(default=None, description="Status or summary for evidence clipping output")
     
     # Metadata
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique request identifier")

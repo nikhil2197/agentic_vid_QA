@@ -15,6 +15,7 @@ from src.nodes.transcript_router import run as transcript_router
 from src.nodes.composer import run as composer
 from src.nodes.followup_advisor import run as followup_advisor
 from src.nodes.followup_reentry import run as followup_reentry
+from src.nodes.evidence_snipper import run as evidence_snipper
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,9 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     def transcript_router_wrapper(state: QAState) -> QAState:
         return transcript_router(state, llm_adapter)
     
+    def evidence_snipper_wrapper(state: QAState) -> QAState:
+        return evidence_snipper(state, catalog_adapter)
+    
     # Add nodes
     workflow.add_node("child_identifier", child_identifier_wrapper)
     workflow.add_node("video_picker", video_picker_wrapper)
@@ -70,6 +74,7 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
     workflow.add_node("transcript_builder", transcript_builder_wrapper)
     workflow.add_node("transcript_answerer", transcript_answerer_wrapper)
     workflow.add_node("transcript_router", transcript_router_wrapper)
+    workflow.add_node("evidence_snipper", evidence_snipper_wrapper)
     
     # Set entry point
     workflow.set_entry_point("child_identifier")
@@ -108,9 +113,12 @@ def create_graph(llm_adapter: LLMAdapter = None, catalog_adapter: CatalogAdapter
         route = getattr(state, 'followup_route', None)
         if route in ("transcript_child", "transcript_day"):
             return "followup_reentry"
+        if route == "evidence":
+            return "evidence_snipper"
         return END
     workflow.add_conditional_edges("followup_advisor", after_followup)
     workflow.add_edge("followup_reentry", "child_identifier")
+    workflow.add_edge("evidence_snipper", END)
     
     return workflow
 
@@ -215,6 +223,9 @@ async def run_main_flow(
     def composer_wrapper(state: QAState) -> QAState:
         return composer(state, llm_adapter)
     
+    def evidence_snipper_wrapper(state: QAState) -> QAState:
+        return evidence_snipper(state, catalog_adapter)
+    
     workflow.add_node("child_identifier", child_identifier_wrapper)
     workflow.add_node("video_picker", video_picker_wrapper)
     workflow.add_node("question_refiner", question_refiner_wrapper)
@@ -222,6 +233,7 @@ async def run_main_flow(
     workflow.add_node("composer", composer_wrapper)
     workflow.add_node("transcript_builder", transcript_builder_wrapper)
     workflow.add_node("transcript_answerer", transcript_answerer_wrapper)
+    workflow.add_node("evidence_snipper", evidence_snipper_wrapper)
     
     workflow.set_entry_point("child_identifier")
     # Conditional branch: if waiting for child info, stop; otherwise proceed

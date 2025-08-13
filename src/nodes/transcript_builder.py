@@ -58,6 +58,29 @@ def run(state: QAState, llm_adapter: LLMAdapter, catalog_adapter: CatalogAdapter
     start_ts = __import__('time').time()
 
     try:
+        # Demo transcripts-only shortcut: force use of cached demo files and avoid model calls
+        if getattr(state, 'demo_mode', False) and getattr(state, 'transcripts_only', False):
+            demo_txt = os.path.join(TRANSCRIPT_DIR, "transcript_2025-08-12.txt")
+            if os.path.exists(demo_txt):
+                state.transcript_path = demo_txt
+                # Prefer transcript in this mode
+                state.transcript_prefer = True
+                # Attempt to load child-specific transcripts for the same demo date
+                try:
+                    child_info_str = (getattr(state, 'child_info', '') or '').lower()
+                    if 'ayaan' in child_info_str:
+                        child_data = load_child_transcripts_for_today('Ayaan', '2025-08-12')
+                        if child_data:
+                            state.child_transcript_data = child_data
+                            logger.info("transcript_builder: demo mode loaded child transcript data for Ayaan (2025-08-12)")
+                except Exception as e:
+                    logger.warning(f"transcript_builder: demo child transcript load skipped due to error: {e}")
+                duration_ms = int((__import__('time').time() - start_ts) * 1000)
+                logger.info(f"transcript_builder: demo transcripts-only using cached {demo_txt} in {duration_ms}ms")
+                return state
+            else:
+                logger.warning("transcript_builder: demo transcripts-only requested but demo transcript file not found; proceeding with normal logic")
+
         if not state.target_videos:
             logger.info("transcript_builder: no target_videos; skipping")
             return state

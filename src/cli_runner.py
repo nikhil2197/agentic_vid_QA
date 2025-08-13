@@ -161,6 +161,26 @@ async def main():
                     print(f"{result.final_answer}")
                     # Update conversation history with this turn
                     conversation_history.append(ConversationMessage(role="assistant", content=result.final_answer))
+                elif route == "evidence":
+                    # Run evidence snipper node directly and show outputs
+                    print("\n🔄 Preparing evidence clips (vid_2)...")
+                    from src.nodes.evidence_snipper import run as evidence_snipper_node
+                    # Reuse the result state so child_transcript_data and transcript_path are available
+                    ev_state = result
+                    # Ensure the latest conversation history is present
+                    ev_state.conversation_history = conversation_history
+                    ev_state = evidence_snipper_node(ev_state, catalog_adapter)
+                    msg = getattr(ev_state, 'evidence_message', None) or ""
+                    clips = (getattr(ev_state, 'evidence_clips', {}) or {}).get('vid_2', [])
+                    print(f"\n💡 Evidence: {msg}")
+                    if clips:
+                        print("Saved clips:")
+                        for p in clips:
+                            print(f" - {p}")
+                    else:
+                        print("No clips available.")
+                    # Keep conversation turn with a short acknowledgment
+                    conversation_history.append(ConversationMessage(role="assistant", content=(msg or "Evidence processed.")))
                 else:
                     # Display follow-up response from advisor (parenting help)
                     print(f"\n💡 Follow-up Response:")
