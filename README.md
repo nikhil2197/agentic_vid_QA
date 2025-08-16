@@ -1,7 +1,7 @@
 # Agentic Video QA — Preschool Day (Transcript-First Demo)
 
 ## Product Objective
-- Purpose: Help parents understand their child’s day in preschool — what happened, how the child engaged, mood/affect, participation, and notable events — through concise, trustworthy answers to natural questions.
+- Purpose: Help parents understand their child’s day in preschool — what happened, how the child engaged, mood/affect, participation, and notable events — through concise, trustworthy answers to natural questions grounded in CCTV footage (3 hours) from the day.
 
 ## High-Level Architecture
 - Multi-agent system: LangGraph-based orchestration that routes questions, selects relevant footage/transcripts, and composes grounded answers.
@@ -9,18 +9,18 @@
 - Adapters: LLM for reasoning and composition; catalog for video metadata; optional evidence snipping for clips.
 - Data inputs: Day-level transcripts and optional per-child transcripts generated from videos.
 - Outputs: Concise answer with optional follow-up guidance and evidence clip pointers.
-- Full graph details: See ARCHITECTURE.md for routing and follow-ups.
+- Full graph details: See `Overall Architecture Diagram` for routing and follow-ups.
 
 ## This Branch (Demo Scope)
 - MVP behavior: Transcript-first demo operating solely on event transcripts pre-generated from classroom videos.
 - Supported questions: High-level “what happened today?”, engagement/attention, mood/affect, participation/behaviors, distress incidents.
-- How it works: Identify child → pick relevant videos → refine question → build transcript context → answer from transcripts → compose final answer → offer follow-ups.
+- How it works: refine question → build transcript context → answer from transcripts → compose final answer → offer follow-ups.
 - Important: If transcripts cannot answer, this branch returns a polite fallback and does not invoke video analyzers.
 
 ## Not In This Branch (Broader Tool)
 - Multimodal analysis: When enabled, the system routes to video analyzers if transcripts are insufficient, using Gemini to reason directly over CCTV (via GCS URIs).
 - Broader question set: Visual details, fine-grained activity recognition, body language and interaction cues, richer evidence generation.
-- Path when enabled: child_identifier → video_picker → question_refiner → transcript_router → transcript_answerer → if insufficient, route to video_analyzers → composer → followup_advisor.
+- Evaluator for answers prior to responding
 
 ## How To Run
 - Prerequisites:
@@ -76,9 +76,3 @@
 - Auth/Project: Verify `GOOGLE_CLOUD_PROJECT` and run `gcloud auth application-default login`.
 - Permissions: Ensure ADC has viewer permissions on any referenced GCS URIs (for prep/broader toolpaths).
 - Generic answers: Tune prompts in `prompts/` or adjust temperatures in adapters.
-
-## Roadmap (Beyond Demo)
-- Enable transcript router + video analyzers for multimodal fallback.
-- Expand question taxonomy and routing rules.
-- Deterministic evidence clip selection and caching.
-- Enhance parent advisor and coach integrations.
